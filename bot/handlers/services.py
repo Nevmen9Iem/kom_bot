@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters import StateFilter
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from bot.keyboards import navigation_keyboard
+from bot.utils.db import save_measurement, get_measurements_by_address, get_addresses
 from bot.states import MenuStates
 
 router = Router()
@@ -12,7 +13,6 @@ router = Router()
 # Обробник для вибору "Електроенергія"
 @router.message(lambda message: message.text == "Електроенергія")
 async def electricity_service(message: types.Message, state: FSMContext):
-    # Вибір типу лічильника
     meter_type_keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Однозонний")],
@@ -25,44 +25,22 @@ async def electricity_service(message: types.Message, state: FSMContext):
     await message.answer("Оберіть тип лічильника:", reply_markup=meter_type_keyboard)
     await state.set_state("ELECTRICITY_METER_TYPE")
 
-# Обробник для вибору типу лічильника
-@router.message(StateFilter("ELECTRICITY_METER_TYPE"))
-async def choose_meter_type(message: types.Message, state: FSMContext):
-    meter_type = message.text
-    if meter_type not in ["Однозонний", "Двозонний", "Трьохзонний"]:
-        await message.answer("Будь ласка, оберіть один із типів лічильника.")
-        return
-
-    await state.update_data(meter_type=meter_type)
-
-    if meter_type == "Однозонний":
-        await message.answer("Введіть попередні показники електроенергії:", reply_markup=navigation_keyboard())
-        await state.set_state("ELECTRICITY_SINGLE_PREVIOUS")
-    elif meter_type == "Двозонний":
-        await message.answer("Введіть попередні показники електроенергії в зоні Ніч:", reply_markup=navigation_keyboard())
-        await state.set_state("ELECTRICITY_DOUBLE_NIGHT_PREVIOUS")
-    elif meter_type == "Трьохзонний":
-        await message.answer("Введіть попередні показники електроенергії в зоні Ніч:", reply_markup=navigation_keyboard())
-        await state.set_state("ELECTRICITY_TRIPLE_NIGHT_PREVIOUS")
-
-# Обробники для типу "Однозонний"
-@router.message(StateFilter("ELECTRICITY_SINGLE_PREVIOUS"))
-async def electricity_single_previous_input(message: types.Message, state: FSMContext):
-    await state.update_data(electricity_previous=message.text)
-    await message.answer("Введіть останні показники електроенергії:")
-    await state.set_state("ELECTRICITY_SINGLE_CURRENT")
-
 @router.message(StateFilter("ELECTRICITY_SINGLE_CURRENT"))
 async def electricity_single_current_input(message: types.Message, state: FSMContext):
     data = await state.get_data()
     try:
         previous = float(data.get("electricity_previous"))
         current = float(message.text)
-        cost = (current - previous) * 4.32
-        await message.answer(f"Вартість за спожиту електроенергію: {cost:.2f} грн")
+        amount = (current - previous) * 4.32
+        await message.answer(f"Вартість за спожиту електроенергію: {amount:.2f} грн")
+
+        # Збереження показників у базу
+        address_id = data.get("address_id")
+        save_measurement(address_id, "Електроенергія", previous, current, amount)
     except ValueError:
         await message.answer("Введені значення мають бути числовими. Спробуйте ще раз.")
     await state.clear()
+
 
 # Обробники для типу "Двозонний"
 @router.message(StateFilter("ELECTRICITY_DOUBLE_NIGHT_PREVIOUS"))

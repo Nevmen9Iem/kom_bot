@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from bot.keyboards import navigation_keyboard
-from bot.utils.db import get_addresses  # Імпорт функції get_addresses
+from bot.utils.db import get_addresses, get_measurements_by_address  # Імпорт функції get_addresses
 from bot.states import MenuStates  # Імпортуємо MenuStates
 
 router = Router()
@@ -70,3 +70,21 @@ async def go_to_main_menu(message: types.Message, state: FSMContext):
     )
     await message.answer("Повернення до головного меню.", reply_markup=main_menu_keyboard)
     await state.set_state(MenuStates.MAIN_MENU)
+
+# Обробник для кнопки "Сформувати рахунок"
+@router.message(lambda message: message.text == "Сформувати рахунок")
+async def generate_bill(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    address_id = data.get("address_id")
+    measurements = get_measurements_by_address(address_id)
+
+    if not measurements:
+        await message.answer("Для цієї адреси немає жодних показників.")
+        return
+
+    # Формування рахунку
+    bill_text = "Рахунок за адресою:\n"
+    for service, previous, current, amount, date in measurements:
+        bill_text += f"{service} ({date}): {previous} - {current} = {amount:.2f} грн\n"
+
+    await message.answer(bill_text)
